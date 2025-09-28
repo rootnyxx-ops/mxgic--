@@ -49,104 +49,194 @@ BACKUP_DIR="$HOME/pterodactyl-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 # Backup files that will be modified
-[ -f "$PTERODACTYL_PATH/routes/api-client.php" ] && cp "$PTERODACTYL_PATH/routes/api-client.php" "$BACKUP_DIR/"
-[ -f "$PTERODACTYL_PATH/routes/admin.php" ] && cp "$PTERODACTYL_PATH/routes/admin.php" "$BACKUP_DIR/"
-[ -f "$PTERODACTYL_PATH/config/services.php" ] && cp "$PTERODACTYL_PATH/config/services.php" "$BACKUP_DIR/"
-[ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ] && cp "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" "$BACKUP_DIR/"
-[ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ] && cp "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" "$BACKUP_DIR/"
+FILES_TO_BACKUP=(
+    "routes/api-client.php"
+    "routes/admin.php"
+    "config/services.php"
+    "resources/scripts/routers/routes.ts"
+    "resources/views/layouts/admin.blade.php"
+)
+
+for file in "${FILES_TO_BACKUP[@]}"; do
+    if [ -f "$PTERODACTYL_PATH/$file" ]; then
+        mkdir -p "$BACKUP_DIR/$(dirname "$file")"
+        cp "$PTERODACTYL_PATH/$file" "$BACKUP_DIR/$file"
+        echo "  ✓ Backed up $file"
+    fi
+done
 
 echo -e "${GREEN}✓ Backup created at $BACKUP_DIR${NC}"
+
+# Function to safely copy files with error checking
+safe_copy() {
+    local src="$1"
+    local dest="$2"
+    
+    if [ ! -f "$src" ]; then
+        echo -e "${RED}Error: Source file $src not found${NC}"
+        return 1
+    fi
+    
+    sudo mkdir -p "$(dirname "$dest")"
+    if sudo cp "$src" "$dest"; then
+        echo "  ✓ Copied $(basename "$src")"
+        return 0
+    else
+        echo -e "${RED}Error: Failed to copy $src to $dest${NC}"
+        return 1
+    fi
+}
 
 # Install backend files
 echo -e "${YELLOW}Installing backend files...${NC}"
 
-# Create directories
-sudo mkdir -p "$PTERODACTYL_PATH/app/Http/Controllers/Admin"
-sudo mkdir -p "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers"
-sudo mkdir -p "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers"
-sudo mkdir -p "$PTERODACTYL_PATH/app/Services/Servers"
-sudo mkdir -p "$PTERODACTYL_PATH/app/Repositories/Wings"
-sudo mkdir -p "$PTERODACTYL_PATH/resources/views/admin/ai"
+# Backend file mappings
+declare -A BACKEND_FILES=(
+    ["app/Http/Controllers/Admin/AiSettingsController.php"]="$PTERODACTYL_PATH/app/Http/Controllers/Admin/AiSettingsController.php"
+    ["app/Http/Controllers/Api/Client/Servers/AiChatController.php"]="$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
+    ["app/Http/Requests/Api/Client/Servers/AiChatRequest.php"]="$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
+    ["app/Services/Servers/AiChatService.php"]="$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"
+    ["app/Repositories/Wings/DaemonConsoleRepository.php"]="$PTERODACTYL_PATH/app/Repositories/Wings/DaemonConsoleRepository.php"
+    ["resources/views/admin/ai/index.blade.php"]="$PTERODACTYL_PATH/resources/views/admin/ai/index.blade.php"
+)
 
-# Copy backend files
-sudo cp "app/Http/Controllers/Admin/AiSettingsController.php" "$PTERODACTYL_PATH/app/Http/Controllers/Admin/"
-sudo cp "app/Http/Controllers/Api/Client/Servers/AiChatController.php" "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/"
-sudo cp "app/Http/Requests/Api/Client/Servers/AiChatRequest.php" "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/"
-sudo cp "app/Services/Servers/AiChatService.php" "$PTERODACTYL_PATH/app/Services/Servers/"
-sudo cp "app/Repositories/Wings/DaemonConsoleRepository.php" "$PTERODACTYL_PATH/app/Repositories/Wings/"
-sudo cp "resources/views/admin/ai/index.blade.php" "$PTERODACTYL_PATH/resources/views/admin/ai/"
+for src in "${!BACKEND_FILES[@]}"; do
+    safe_copy "$src" "${BACKEND_FILES[$src]}" || exit 1
+done
 
 echo -e "${GREEN}✓ Backend files installed${NC}"
 
 # Install frontend files
 echo -e "${YELLOW}Installing frontend files...${NC}"
 
-sudo mkdir -p "$PTERODACTYL_PATH/resources/scripts/api/server"
-sudo mkdir -p "$PTERODACTYL_PATH/resources/scripts/components/server/ai"
+declare -A FRONTEND_FILES=(
+    ["resources/scripts/api/server/ai.ts"]="$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
+    ["resources/scripts/components/server/ai/AiChatContainer.tsx"]="$PTERODACTYL_PATH/resources/scripts/components/server/ai/AiChatContainer.tsx"
+)
 
-sudo cp "resources/scripts/api/server/ai.ts" "$PTERODACTYL_PATH/resources/scripts/api/server/"
-sudo cp "resources/scripts/components/server/ai/AiChatContainer.tsx" "$PTERODACTYL_PATH/resources/scripts/components/server/ai/"
+for src in "${!FRONTEND_FILES[@]}"; do
+    safe_copy "$src" "${FRONTEND_FILES[$src]}" || exit 1
+done
 
 echo -e "${GREEN}✓ Frontend files installed${NC}"
+
+# Function to safely modify files
+safe_modify() {
+    local file="$1"
+    local pattern="$2"
+    local replacement="$3"
+    local description="$4"
+    
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}⚠ File $file not found, skipping $description${NC}"
+        return 0
+    fi
+    
+    # Check if modification already exists
+    if grep -q "$pattern" "$file"; then
+        echo -e "${YELLOW}⚠ $description already exists${NC}"
+        return 0
+    fi
+    
+    # Create temporary file for testing
+    local temp_file=$(mktemp)
+    cp "$file" "$temp_file"
+    
+    # Apply modification to temp file
+    if echo "$replacement" | sudo tee -a "$temp_file" > /dev/null; then
+        # If successful, apply to real file
+        sudo cp "$temp_file" "$file"
+        rm "$temp_file"
+        echo "  ✓ $description"
+        return 0
+    else
+        rm "$temp_file"
+        echo -e "${RED}Error: Failed to apply $description${NC}"
+        return 1
+    fi
+}
 
 # Update configuration files
 echo -e "${YELLOW}Updating configuration files...${NC}"
 
-# Update services.php - add Gemini config before the closing ];
-if ! grep -q "gemini" "$PTERODACTYL_PATH/config/services.php"; then
-    sudo sed -i "/^];$/i\\    'gemini' => [\\n        'api_key' => env('GEMINI_API_KEY'),\\n    ]," "$PTERODACTYL_PATH/config/services.php"
-    echo -e "${GREEN}✓ Updated config/services.php${NC}"
-else
-    echo -e "${YELLOW}⚠ Gemini config already exists in services.php${NC}"
+# Update services.php
+if [ -f "$PTERODACTYL_PATH/config/services.php" ]; then
+    if ! grep -q "gemini" "$PTERODACTYL_PATH/config/services.php"; then
+        # Use a more reliable method to add to services.php
+        sudo sed -i "/^];$/i\\    'gemini' => [\\n        'api_key' => env('GEMINI_API_KEY'),\\n    ]," "$PTERODACTYL_PATH/config/services.php"
+        echo "  ✓ Updated config/services.php"
+    else
+        echo -e "${YELLOW}⚠ Gemini config already exists in services.php${NC}"
+    fi
 fi
 
-# Update API routes - add AI routes to the servers group
-if ! grep -q "AiChatController" "$PTERODACTYL_PATH/routes/api-client.php"; then
-    # Add import after the existing Client import
-    sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Api\\Client;/a use Pterodactyl\\Http\\Controllers\\Api\\Client\\Servers\\AiChatController;' "$PTERODACTYL_PATH/routes/api-client.php"
-    
-    # Add AI routes before the closing }); of the servers group
-    sudo sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\
+# Update API routes
+if [ -f "$PTERODACTYL_PATH/routes/api-client.php" ]; then
+    if ! grep -q "AiChatController" "$PTERODACTYL_PATH/routes/api-client.php"; then
+        # Add import
+        sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Api\\Client;/a use Pterodactyl\\Http\\Controllers\\Api\\Client\\Servers\\AiChatController;' "$PTERODACTYL_PATH/routes/api-client.php"
+        
+        # Add routes within the servers group - find the right location
+        sudo sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\
         Route::post('\''/chat'\'', [AiChatController::class, '\''chat'\'']);\
         Route::get('\''/history'\'', [AiChatController::class, '\''history'\'']);\
     });' "$PTERODACTYL_PATH/routes/api-client.php"
-    echo -e "${GREEN}✓ Updated API routes${NC}"
-else
-    echo -e "${YELLOW}⚠ AI routes already exist${NC}"
+        echo "  ✓ Updated API routes"
+    else
+        echo -e "${YELLOW}⚠ AI routes already exist${NC}"
+    fi
 fi
 
 # Update admin routes
-if [ -f "$PTERODACTYL_PATH/routes/admin.php" ] && ! grep -q "AiSettingsController" "$PTERODACTYL_PATH/routes/admin.php"; then
-    # Add import after existing Admin import
-    sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Admin;/a use Pterodactyl\\Http\\Controllers\\Admin\\AiSettingsController;' "$PTERODACTYL_PATH/routes/admin.php"
-    
-    # Add routes at the end of file
-    echo "" | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
-    echo "Route::group(['prefix' => 'ai'], function () {" | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
-    echo "    Route::get('/', [AiSettingsController::class, 'index'])->name('admin.ai.index');" | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
-    echo "    Route::post('/', [AiSettingsController::class, 'update'])->name('admin.ai.update');" | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
-    echo "});" | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
-    echo -e "${GREEN}✓ Updated admin routes${NC}"
+if [ -f "$PTERODACTYL_PATH/routes/admin.php" ]; then
+    if ! grep -q "AiSettingsController" "$PTERODACTYL_PATH/routes/admin.php"; then
+        # Add import
+        sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Admin;/a use Pterodactyl\\Http\\Controllers\\Admin\\AiSettingsController;' "$PTERODACTYL_PATH/routes/admin.php"
+        
+        # Add routes at the end
+        {
+            echo ""
+            echo "/*"
+            echo "|--------------------------------------------------------------------------"
+            echo "| AI Settings Controller Routes"
+            echo "|--------------------------------------------------------------------------"
+            echo "|"
+            echo "| Endpoint: /admin/ai"
+            echo "|"
+            echo "*/"
+            echo "Route::group(['prefix' => 'ai'], function () {"
+            echo "    Route::get('/', [AiSettingsController::class, 'index'])->name('admin.ai.index');"
+            echo "    Route::post('/', [AiSettingsController::class, 'update'])->name('admin.ai.update');"
+            echo "});"
+        } | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
+        echo "  ✓ Updated admin routes"
+    else
+        echo -e "${YELLOW}⚠ Admin AI routes already exist${NC}"
+    fi
 fi
 
-# Update admin layout - add AI menu item
-if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ] && ! grep -q "AI Settings" "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"; then
-    # Add AI Settings menu item after Settings in the BASIC ADMINISTRATION section
-    sudo sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\
+# Update admin layout
+if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ]; then
+    if ! grep -q "AI Settings" "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"; then
+        # Find the settings menu item and add AI Settings after it
+        sudo sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\
                             <a href="{{ route('\''admin.ai.index'\'')}}\">\
                                 <i class="fa fa-robot"></i> <span>AI Settings</span>\
                             </a>\
                         </li>' "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"
-    echo -e "${GREEN}✓ Updated admin navigation${NC}"
+        echo "  ✓ Updated admin navigation"
+    else
+        echo -e "${YELLOW}⚠ AI Settings menu already exists${NC}"
+    fi
 fi
 
-# Update frontend routes
+# Update frontend routes (if routes.ts exists)
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
     if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        # Add import after existing lazy imports
+        # Add import
         sudo sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
         
-        # Add route to server array before the closing bracket
+        # Add route to server routes array
         sudo sed -i '/server:.*\[/,/    \],/{
             /    \],/{
                 i\        {\
@@ -158,67 +248,100 @@ if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
                 i\        },
             }
         }' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        echo -e "${GREEN}✓ Updated frontend routes${NC}"
+        echo "  ✓ Updated frontend routes"
+    else
+        echo -e "${YELLOW}⚠ Frontend AI routes already exist${NC}"
     fi
 else
     # Copy our routes file if it doesn't exist
-    sudo cp "resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/"
-    echo -e "${GREEN}✓ Created frontend routes${NC}"
+    if [ -f "resources/scripts/routers/routes.ts" ]; then
+        safe_copy "resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Created frontend routes"
+    fi
 fi
+
+echo -e "${GREEN}✓ Configuration files updated${NC}"
 
 # Set permissions
 echo -e "${YELLOW}Setting permissions...${NC}"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Http/Controllers/Admin/AiSettingsController.php"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Repositories/Wings/DaemonConsoleRepository.php"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/views/admin/ai/"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
-sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/scripts/components/server/ai/"
 
-echo -e "${GREEN}✓ Permissions set${NC}"
+# Set ownership for all installed files
+ALL_FILES=(
+    "$PTERODACTYL_PATH/app/Http/Controllers/Admin/AiSettingsController.php"
+    "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
+    "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
+    "$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"
+    "$PTERODACTYL_PATH/app/Repositories/Wings/DaemonConsoleRepository.php"
+    "$PTERODACTYL_PATH/resources/views/admin/ai/"
+    "$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
+    "$PTERODACTYL_PATH/resources/scripts/components/server/ai/"
+)
 
-# Build frontend
-echo -e "${YELLOW}Building frontend...${NC}"
-cd "$PTERODACTYL_PATH"
-sudo -u www-data npm run build:production
-
-echo -e "${GREEN}✓ Frontend built${NC}"
-
-# Final instructions
-echo -e "${BLUE}=== Installation Complete ===${NC}"
-echo -e "${GREEN}✓ All files installed successfully${NC}"
-echo -e "${GREEN}✓ Configuration updated${NC}"
-echo -e "${GREEN}✓ Frontend built${NC}"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Add GEMINI_API_KEY to your .env file"
-echo "2. Visit /admin/ai to configure AI settings"
-echo "3. Access AI chat at /server/{id}/ai"
-echo ""
-echo -e "${BLUE}Backup location: $BACKUP_DIR${NC}"
-echo -e "${GREEN}Installation completed successfully!${NC}"TERODACTYL_PATH/resources/scripts/components/server/ai/"
+for file in "${ALL_FILES[@]}"; do
+    if [ -e "$file" ]; then
+        sudo chown -R www-data:www-data "$file"
+    fi
+done
 
 echo -e "${GREEN}✓ Permissions set${NC}"
 
 # Clear caches
 echo -e "${YELLOW}Clearing Laravel caches...${NC}"
 cd "$PTERODACTYL_PATH"
-sudo -u www-data php artisan config:clear
-sudo -u www-data php artisan route:clear
-sudo -u www-data php artisan cache:clear
+
+# Clear caches with error handling
+if sudo -u www-data php artisan config:clear; then
+    echo "  ✓ Config cache cleared"
+else
+    echo -e "${YELLOW}⚠ Failed to clear config cache${NC}"
+fi
+
+if sudo -u www-data php artisan route:clear; then
+    echo "  ✓ Route cache cleared"
+else
+    echo -e "${YELLOW}⚠ Failed to clear route cache${NC}"
+fi
+
+if sudo -u www-data php artisan cache:clear; then
+    echo "  ✓ Application cache cleared"
+else
+    echo -e "${YELLOW}⚠ Failed to clear application cache${NC}"
+fi
 
 echo -e "${GREEN}✓ Caches cleared${NC}"
 
 # Build frontend
 echo -e "${YELLOW}Building frontend (this may take a few minutes)...${NC}"
+
+# Check for package manager and build
 if command -v yarn &> /dev/null; then
-    sudo -u www-data yarn install --production
-    sudo -u www-data yarn build:production
+    echo "  Using Yarn..."
+    if sudo -u www-data yarn install --production --frozen-lockfile; then
+        echo "  ✓ Dependencies installed"
+        if sudo -u www-data yarn build:production; then
+            echo "  ✓ Frontend built with Yarn"
+        else
+            echo -e "${RED}Error: Frontend build failed with Yarn${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: Yarn install failed${NC}"
+        exit 1
+    fi
 elif command -v npm &> /dev/null; then
-    sudo -u www-data npm install --production
-    sudo -u www-data npm run build:production
+    echo "  Using NPM..."
+    if sudo -u www-data npm ci --production; then
+        echo "  ✓ Dependencies installed"
+        if sudo -u www-data npm run build:production; then
+            echo "  ✓ Frontend built with NPM"
+        else
+            echo -e "${RED}Error: Frontend build failed with NPM${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: NPM install failed${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}Error: Neither yarn nor npm found. Please install Node.js and npm/yarn${NC}"
     exit 1
@@ -247,3 +370,6 @@ echo "✓ Console log access (if supported by Wings)"
 echo "✓ Admin settings panel"
 echo "✓ Chat history"
 echo "✓ Permission-based access"
+echo ""
+echo -e "${YELLOW}If you encounter any issues, restore from backup:${NC}"
+echo "sudo cp -r $BACKUP_DIR/* $PTERODACTYL_PATH/"

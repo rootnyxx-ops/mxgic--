@@ -36,7 +36,7 @@ class AiChatController extends ClientApiController
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to process AI request: ' . $e->getMessage()
+                'error' => 'Failed to process AI request: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')
             ], 500);
         }
     }

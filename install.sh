@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Pterodactyl AI Chat Integration Installer
-# Run this script from the addon directory
+# Usage: git clone https://github.com/rootnyxx-ops/mxgic-- && cd mxgic-- && chmod +x install.sh && ./install.sh
 
 set -e
 
@@ -176,6 +176,29 @@ sudo chown -R www-data:www-data "$PTERODACTYL_PATH/app/Repositories/Wings/Daemon
 sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/views/admin/ai/"
 sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
 sudo chown -R www-data:www-data "$PTERODACTYL_PATH/resources/scripts/components/server/ai/"
+
+echo -e "${GREEN}✓ Permissions set${NC}"
+
+# Build frontend
+echo -e "${YELLOW}Building frontend...${NC}"
+cd "$PTERODACTYL_PATH"
+sudo -u www-data npm run build:production
+
+echo -e "${GREEN}✓ Frontend built${NC}"
+
+# Final instructions
+echo -e "${BLUE}=== Installation Complete ===${NC}"
+echo -e "${GREEN}✓ All files installed successfully${NC}"
+echo -e "${GREEN}✓ Configuration updated${NC}"
+echo -e "${GREEN}✓ Frontend built${NC}"
+echo ""
+echo -e "${YELLOW}Next steps:${NC}"
+echo "1. Add GEMINI_API_KEY to your .env file"
+echo "2. Visit /admin/ai to configure AI settings"
+echo "3. Access AI chat at /server/{id}/ai"
+echo ""
+echo -e "${BLUE}Backup location: $BACKUP_DIR${NC}"
+echo -e "${GREEN}Installation completed successfully!${NC}"TERODACTYL_PATH/resources/scripts/components/server/ai/"
 
 echo -e "${GREEN}✓ Permissions set${NC}"
 

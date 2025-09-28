@@ -71,6 +71,17 @@ safe_copy() {
         return 1
     fi
     
+    # Check if source and destination are the same file
+    if [ "$(realpath "$src")" = "$(realpath "$dest")" ]; then
+        echo -e "${YELLOW}⚠ $(basename "$src") already exists, skipping${NC}"
+        return 0
+    fi
+    
+    # Check if destination already exists
+    if [ -f "$dest" ]; then
+        echo -e "${YELLOW}⚠ $(basename "$src") already exists, overwriting${NC}"
+    fi
+    
     mkdir -p "$(dirname "$dest")"
     if cp "$src" "$dest"; then
         echo "  ✓ Copied $(basename "$src")"

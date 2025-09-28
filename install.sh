@@ -243,20 +243,20 @@ echo -e "${GREEN}✓ Permissions set${NC}"
 # Install Node.js and dependencies
 echo -e "${YELLOW}Installing Node.js and dependencies...${NC}"
 
-# Detect OS
+# Detect OS and install Node.js 22.x
 if [ -f /etc/debian_version ]; then
     # Ubuntu/Debian
     echo "  Installing Node.js 22.x for Ubuntu/Debian..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs
+    curl -sL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt install -y nodejs
 elif [ -f /etc/redhat-release ]; then
     # CentOS/RHEL/Rocky/Alma
     echo "  Installing Node.js 22.x for CentOS/RHEL..."
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+    curl -sL https://rpm.nodesource.com/setup_22.x | sudo -E bash -
     if command -v dnf &> /dev/null; then
-        dnf install -y nodejs yarn
+        sudo dnf install -y nodejs yarn
     else
-        yum install -y nodejs yarn
+        sudo yum install -y nodejs yarn
     fi
 else
     echo -e "${YELLOW}⚠ Unknown OS, please install Node.js 22.x manually${NC}"
@@ -264,7 +264,7 @@ fi
 
 # Install yarn globally
 echo "  Installing Yarn globally..."
-npm install -g yarn
+npm i -g yarn
 
 echo -e "${GREEN}✓ Node.js and Yarn installed${NC}"
 
@@ -277,7 +277,7 @@ php artisan view:clear
 echo -e "${GREEN}✓ Laravel cache cleared${NC}"
 
 # Install dependencies and build
-echo -e "${YELLOW}Installing JavaScript dependencies...${NC}"
+echo -e "${YELLOW}Installing JavaScript dependencies and building...${NC}"
 cd "$PTERODACTYL_PATH"
 
 # Remove all .yarnrc files that cause permission issues
@@ -287,33 +287,16 @@ find /root -name ".yarnrc" -delete 2>/dev/null || true
 # Set proper ownership for entire pterodactyl directory
 chown -R www-data:www-data "$PTERODACTYL_PATH"
 
-# Set proper ownership for yarn directories
-if [ -d "/var/www/.yarn" ]; then
-    chown -R www-data:www-data "/var/www/.yarn"
-fi
-if [ -d "/var/www/.cache" ]; then
-    chown -R www-data:www-data "/var/www/.cache"
-fi
+# Install panel build dependencies
+echo "  Installing panel build dependencies..."
+yarn
 
-# Install dependencies as www-data user
-echo "  Running yarn install as www-data..."
-if ! sudo -u www-data yarn install --production --frozen-lockfile; then
-    echo -e "${RED}Error: Yarn install failed${NC}"
-    exit 1
-fi
+# Build Panel Assets (for NodeJS v17+)
+echo "  Building panel assets..."
+export NODE_OPTIONS=--openssl-legacy-provider
+yarn build:production
 
-echo -e "${GREEN}✓ Dependencies installed${NC}"
-
-# Build frontend
-echo -e "${YELLOW}Building frontend assets...${NC}"
-
-echo "  Building production assets as www-data..."
-if ! sudo -u www-data NODE_OPTIONS=--openssl-legacy-provider yarn build:production; then
-    echo -e "${RED}Error: Build failed${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ Frontend assets built${NC}"
+echo -e "${GREEN}✓ Frontend built successfully${NC}"
 
 # Final message
 echo ""

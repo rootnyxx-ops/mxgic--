@@ -190,40 +190,43 @@ if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ]; then
     fi
 fi
 
-# Update frontend routes and fix TypeScript errors
+# Fix routes.ts completely - restore from backup and add AI route properly
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
-    echo -e "${YELLOW}Fixing frontend routes and TypeScript errors...${NC}"
+    echo -e "${YELLOW}Fixing frontend routes...${NC}"
     
-    # Remove any existing AiChatContainer declarations to prevent duplicates
+    # Restore original routes.ts from backup if it's corrupted
+    if grep -q "i            path:" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
+        echo "  ⚠ Detected corrupted routes.ts, restoring from backup..."
+        if [ -f "$BACKUP_DIR/resources/scripts/routers/routes.ts" ]; then
+            cp "$BACKUP_DIR/resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+            echo "  ✓ Restored routes.ts from backup"
+        fi
+    fi
+    
+    # Remove any existing AiChatContainer declarations
     sed -i '/const AiChatContainer = lazy/d' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
     
     # Add import after FileEditContainer import
     sed -i '/const FileEditContainer = lazy/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
     
-    # Remove any broken route entries
-    sed -i '/a            path:/,/a        },/d' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-    
-    # Add proper AI route if not exists
+    # Add AI route properly - find the schedules route and add AI route before it
     if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        sed -i '/path: '\''\/schedules'\''/,/},/{
-            /},/{
-                i\        {\
-                i\            path: '\''/ai'\'',\
-                i\            permission: null,\
-                i\            name: '\''AI Assistant'\'',\
-                i\            component: AiChatContainer,\
-                i\            exact: true,\
-                i\        },
-            }
+        # Find the line with schedules route and add AI route before it
+        sed -i '/path: '\''\/schedules'\''/{
+            i\        {\
+            i\            path: '\''/ai'\'',\
+            i\            permission: null,\
+            i\            name: '\''AI Assistant'\'',\
+            i\            component: AiChatContainer,\
+            i\            exact: true,\
+            i\        },
         }' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Added AI route to frontend"
+    else
+        echo -e "${YELLOW}  ⚠ AI route already exists${NC}"
     fi
     
     echo "  ✓ Fixed frontend routes"
-else
-    if [ -f "resources/scripts/routers/routes.ts" ]; then
-        safe_copy "resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        echo "  ✓ Created frontend routes"
-    fi
 fi
 
 echo -e "${GREEN}✓ Configuration files updated${NC}"

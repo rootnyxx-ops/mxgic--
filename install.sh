@@ -18,8 +18,6 @@ PTERODACTYL_PATH="/var/www/pterodactyl"
 echo -e "${BLUE}=== Pterodactyl AI Chat Integration Installer ===${NC}"
 echo ""
 
-# Note: Running as root for system file modifications
-
 # Check if we're in the right directory
 if [ ! -f "app/Services/Servers/AiChatService.php" ]; then
     echo -e "${RED}Error: Please run this script from the addon directory${NC}"
@@ -181,32 +179,35 @@ if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ]; then
     fi
 fi
 
-# Update frontend routes (if routes.ts exists)
+# Update frontend routes and fix TypeScript errors
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
-    # Check for import separately
-    if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        # Add import after FileEditContainer import
-        sed -i '/const FileEditContainer = lazy/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        echo "  ✓ Added AiChatContainer import"
-    else
-        echo -e "${YELLOW}⚠ AiChatContainer import already exists${NC}"
+    echo -e "${YELLOW}Fixing frontend routes and TypeScript errors...${NC}"
+    
+    # Remove any existing AiChatContainer declarations to prevent duplicates
+    sed -i '/const AiChatContainer = lazy/d' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+    
+    # Add import after FileEditContainer import
+    sed -i '/const FileEditContainer = lazy/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+    
+    # Remove any broken route entries
+    sed -i '/a            path:/,/a        },/d' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+    
+    # Add proper AI route if not exists
+    if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
+        sed -i '/path: '\''\/schedules'\''/,/},/{
+            /},/{
+                i\        {\
+                i\            path: '\''/ai'\'',\
+                i\            permission: null,\
+                i\            name: '\''AI Assistant'\'',\
+                i\            component: AiChatContainer,\
+                i\            exact: true,\
+                i\        },
+            }
+        }' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
     fi
     
-    # Check for route separately
-    if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        # Add route to server routes array
-        sed -i '/path: '\'''/schedules'\'''/,/},/{/},/a\        {
-            path: '\'''/ai'\''',
-            permission: null,
-            name: '\''AI Assistant'\''',
-            component: AiChatContainer,
-            exact: true,
-        },
-}' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        echo "  ✓ Added AI route"
-    else
-        echo -e "${YELLOW}⚠ AI route already exists${NC}"
-    fi
+    echo "  ✓ Fixed frontend routes"
 else
     if [ -f "resources/scripts/routers/routes.ts" ]; then
         safe_copy "resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
@@ -312,107 +313,4 @@ echo "3. Access the AI chat at /server/{id}/ai"
 echo ""
 echo -e "${YELLOW}Backup created at: $BACKUP_DIR${NC}"
 echo ""
-echo -e "${GREEN}🎉 Pterodactyl AI Chat Integration is now installed!${NC}"hp"
-    "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
-    "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
-    "$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"
-    "$PTERODACTYL_PATH/app/Repositories/Wings/DaemonConsoleRepository.php"
-    "$PTERODACTYL_PATH/resources/views/admin/ai/"
-    "$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
-    "$PTERODACTYL_PATH/resources/scripts/components/server/ai/"
-)
-
-for file in "${ALL_FILES[@]}"; do
-    if [ -e "$file" ]; then
-        chown -R www-data:www-data "$file"
-    fi
-done
-
-echo -e "${GREEN}✓ Permissions set${NC}"
-
-# Clear caches
-echo -e "${YELLOW}Clearing Laravel caches...${NC}"
-cd "$PTERODACTYL_PATH"
-
-if sudo -u www-data php artisan config:clear; then
-    echo "  ✓ Config cache cleared"
-else
-    echo -e "${YELLOW}⚠ Failed to clear config cache${NC}"
-fi
-
-if sudo -u www-data php artisan route:clear; then
-    echo "  ✓ Route cache cleared"
-else
-    echo -e "${YELLOW}⚠ Failed to clear route cache${NC}"
-fi
-
-if sudo -u www-data php artisan cache:clear; then
-    echo "  ✓ Application cache cleared"
-else
-    echo -e "${YELLOW}⚠ Failed to clear application cache${NC}"
-fi
-
-echo -e "${GREEN}✓ Caches cleared${NC}"
-
-# Build frontend
-echo -e "${YELLOW}Building frontend (this may take a few minutes)...${NC}"
-
-if command -v yarn &> /dev/null; then
-    echo "  Using Yarn..."
-    if sudo -u www-data yarn install --production --frozen-lockfile; then
-        echo "  ✓ Dependencies installed"
-        if sudo -u www-data yarn build:production; then
-            echo "  ✓ Frontend built with Yarn"
-        else
-            echo -e "${RED}Error: Frontend build failed with Yarn${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${RED}Error: Yarn install failed${NC}"
-        exit 1
-    fi
-elif command -v npm &> /dev/null; then
-    echo "  Using NPM..."
-    if sudo -u www-data npm ci --production; then
-        echo "  ✓ Dependencies installed"
-        if sudo -u www-data npm run build:production; then
-            echo "  ✓ Frontend built with NPM"
-        else
-            echo -e "${RED}Error: Frontend build failed with NPM${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${RED}Error: NPM install failed${NC}"
-        exit 1
-    fi
-else
-    echo -e "${RED}Error: Neither yarn nor npm found. Please install Node.js and npm/yarn${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ Frontend built successfully${NC}"
-
-# Final instructions
-echo ""
-echo -e "${GREEN}=== Installation Complete! ===${NC}"
-echo ""
-echo -e "${BLUE}Next Steps:${NC}"
-echo "1. Get your Gemini API key from: https://makersuite.google.com/app/apikey"
-echo "2. Add to your .env file: GEMINI_API_KEY=your_api_key_here"
-echo "3. Or configure via admin panel: /admin/ai"
-echo "4. Access AI chat at: /server/{server-id}/ai"
-echo ""
-echo -e "${YELLOW}Backup location: $BACKUP_DIR${NC}"
-echo ""
-echo -e "${GREEN}🎉 AI Chat Integration installed successfully!${NC}"
-echo ""
-echo -e "${BLUE}Features installed:${NC}"
-echo "✓ AI Chat with Gemini integration"
-echo "✓ File content reading"
-echo "✓ Console log access (if supported by Wings)"
-echo "✓ Admin settings panel"
-echo "✓ Chat history"
-echo "✓ Permission-based access"
-echo ""
-echo -e "${YELLOW}If you encounter any issues, restore from backup:${NC}"
-echo "cp -r $BACKUP_DIR/* $PTERODACTYL_PATH/"
+echo -e "${GREEN}🎉 Pterodactyl AI Chat Integration is now installed!${NC}"

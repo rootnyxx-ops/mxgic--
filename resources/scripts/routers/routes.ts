@@ -1,8 +1,7 @@
 import { lazy } from 'react';
-import { RouteObject } from 'react-router-dom';
 
 // All of the individual server page components.
-const ConsoleContainer = lazy(() => import('@/components/server/console/ConsoleContainer'));
+const ServerConsoleContainer = lazy(() => import('@/components/server/ServerConsoleContainer'));
 const FileManagerContainer = lazy(() => import('@/components/server/files/FileManagerContainer'));
 const FileEditContainer = lazy(() => import('@/components/server/files/FileEditContainer'));
 const AiChatContainer = lazy(() => import('@/components/server/ai/AiChatContainer'));
@@ -34,7 +33,7 @@ export default {
             path: '/',
             permission: null,
             name: 'Console',
-            component: ConsoleContainer,
+            component: ServerConsoleContainer,
             exact: true,
         },
         {

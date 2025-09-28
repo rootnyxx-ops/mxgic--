@@ -5,7 +5,7 @@ import { useFlashKey } from '@/plugins/useFlash';
 import Spinner from '@/components/elements/Spinner';
 import { Button } from '@/components/elements/button/index';
 import Input from '@/components/elements/Input';
-import Checkbox from '@/components/elements/Checkbox';
+
 import { sendAiMessage, getAiHistory } from '@/api/server/ai';
 
 interface Message {
@@ -160,10 +160,13 @@ const AiChatContainer = () => {
             <div className="border-t border-gray-600 p-4 space-y-3">
                 <div className="flex space-x-4">
                     <div className="flex items-center space-x-2">
-                        <Checkbox
+                        <input
+                            type="checkbox"
+                            id="includeLogs"
                             name="includeLogs"
                             checked={includeLogs}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIncludeLogs(e.target.checked)}
+                            className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
                         />
                         <label htmlFor="includeLogs" className="text-sm text-gray-300">
                             Include recent console logs

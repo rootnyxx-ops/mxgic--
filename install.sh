@@ -117,12 +117,39 @@ echo -e "${YELLOW}Installing frontend files...${NC}"
 declare -A FRONTEND_FILES=(
     ["resources/scripts/api/server/ai.ts"]="$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
     ["resources/scripts/components/server/ai/AiChatContainer.tsx"]="$PTERODACTYL_PATH/resources/scripts/components/server/ai/AiChatContainer.tsx"
-    ["resources/scripts/routers/routes.ts"]="$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
 )
 
 for src in "${!FRONTEND_FILES[@]}"; do
     safe_copy "$src" "${FRONTEND_FILES[$src]}" || exit 1
 done
+
+# Update existing routes.ts to add AI route
+if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
+    echo -e "${YELLOW}Updating existing routes.ts...${NC}"
+    
+    # Add AiChatContainer import if not exists
+    if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
+        sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\'')); ' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Added AiChatContainer import"
+    fi
+    
+    # Add AI route if not exists
+    if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
+        # Find a good place to insert the AI route (after files, before schedules)
+        sed -i '/path.*files.*edit/,/},/{/},/a\        {
+            path: '\'''/ai'\''',
+            permission: null,
+            name: '\''AI Assistant'\''',
+            component: AiChatContainer,
+            exact: true,
+        },
+}' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Added AI route"
+    fi
+else
+    echo -e "${RED}Error: routes.ts not found in Pterodactyl installation${NC}"
+    exit 1
+fi
 
 echo -e "${GREEN}✓ Frontend files installed${NC}"
 

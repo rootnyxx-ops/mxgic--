@@ -159,12 +159,16 @@ const AiChatContainer = () => {
 
             <div className="border-t border-gray-600 p-4 space-y-3">
                 <div className="flex space-x-4">
-                    <Checkbox
-                        name="includeLogs"
-                        label="Include recent console logs"
-                        checked={includeLogs}
-                        onChange={(e) => setIncludeLogs(e.target.checked)}
-                    />
+                    <div className="flex items-center space-x-2">
+                        <Checkbox
+                            name="includeLogs"
+                            checked={includeLogs}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIncludeLogs(e.target.checked)}
+                        />
+                        <label htmlFor="includeLogs" className="text-sm text-gray-300">
+                            Include recent console logs
+                        </label>
+                    </div>
                 </div>
                 
                 <Input

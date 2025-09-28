@@ -183,25 +183,29 @@ fi
 
 # Update frontend routes (if routes.ts exists)
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
+    # Check for import separately
     if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        # Add import after existing lazy imports
-        sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        
-        # Add route to server routes array
-        sed -i '/server:.*\\[/,/    \\],/{
-            /    \\],/{
-                i\        {\
-                i\            path: '\''/ai'\'',\
-                i\            permission: null,\
-                i\            name: '\''AI Assistant'\'',\
-                i\            component: AiChatContainer,\
-                i\            exact: true,\
-                i\        },
-            }
-        }' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
-        echo "  ✓ Updated frontend routes"
+        # Add import after FileEditContainer import
+        sed -i '/const FileEditContainer = lazy/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Added AiChatContainer import"
     else
-        echo -e "${YELLOW}⚠ Frontend AI routes already exist${NC}"
+        echo -e "${YELLOW}⚠ AiChatContainer import already exists${NC}"
+    fi
+    
+    # Check for route separately
+    if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
+        # Add route to server routes array
+        sed -i '/path: '\'''/schedules'\'''/,/},/{/},/a\        {
+            path: '\'''/ai'\''',
+            permission: null,
+            name: '\''AI Assistant'\''',
+            component: AiChatContainer,
+            exact: true,
+        },
+}' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        echo "  ✓ Added AI route"
+    else
+        echo -e "${YELLOW}⚠ AI route already exists${NC}"
     fi
 else
     if [ -f "resources/scripts/routers/routes.ts" ]; then
@@ -217,6 +221,117 @@ echo -e "${YELLOW}Setting permissions...${NC}"
 
 ALL_FILES=(
     "$PTERODACTYL_PATH/app/Http/Controllers/Admin/AiSettingsController.php"
+    "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
+    "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
+    "$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"
+    "$PTERODACTYL_PATH/app/Repositories/Wings/DaemonConsoleRepository.php"
+    "$PTERODACTYL_PATH/resources/views/admin/ai/index.blade.php"
+    "$PTERODACTYL_PATH/resources/scripts/api/server/ai.ts"
+    "$PTERODACTYL_PATH/resources/scripts/components/server/ai/AiChatContainer.tsx"
+)
+
+for file in "${ALL_FILES[@]}"; do
+    if [ -f "$file" ]; then
+        chown www-data:www-data "$file"
+        chmod 644 "$file"
+        echo "  ✓ Set permissions for $(basename "$file")"
+    fi
+done
+
+echo -e "${GREEN}✓ Permissions set${NC}"
+
+# Install Node.js and dependencies
+echo -e "${YELLOW}Installing Node.js and dependencies...${NC}"
+
+# Detect OS
+if [ -f /etc/debian_version ]; then
+    # Ubuntu/Debian
+    echo "  Installing Node.js 22.x for Ubuntu/Debian..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y nodejs
+elif [ -f /etc/redhat-release ]; then
+    # CentOS/RHEL/Rocky/Alma
+    echo "  Installing Node.js 22.x for CentOS/RHEL..."
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+    if command -v dnf &> /dev/null; then
+        dnf install -y nodejs yarn
+    else
+        yum install -y nodejs yarn
+    fi
+else
+    echo -e "${YELLOW}⚠ Unknown OS, please install Node.js 22.x manually${NC}"
+fi
+
+# Install yarn globally
+echo "  Installing Yarn globally..."
+npm install -g yarn
+
+echo -e "${GREEN}✓ Node.js and Yarn installed${NC}"
+
+# Clear Laravel cache
+echo -e "${YELLOW}Clearing Laravel cache...${NC}"
+cd "$PTERODACTYL_PATH"
+php artisan config:clear
+php artisan cache:clear
+php artisan view:clear
+echo -e "${GREEN}✓ Laravel cache cleared${NC}"
+
+# Install dependencies and build
+echo -e "${YELLOW}Installing JavaScript dependencies...${NC}"
+cd "$PTERODACTYL_PATH"
+
+# Remove problematic .yarnrc if it exists
+if [ -f ".yarnrc" ]; then
+    rm -f ".yarnrc"
+    echo "  ✓ Removed problematic .yarnrc"
+fi
+
+# Set proper ownership for yarn cache and config
+if [ -d "/var/www/.yarn" ]; then
+    chown -R www-data:www-data "/var/www/.yarn"
+fi
+if [ -d "/var/www/.cache" ]; then
+    chown -R www-data:www-data "/var/www/.cache"
+fi
+
+# Install dependencies
+echo "  Running yarn install..."
+if ! yarn install; then
+    echo -e "${RED}Error: Yarn install failed. Trying with sudo...${NC}"
+    sudo -u www-data yarn install
+fi
+
+echo -e "${GREEN}✓ Dependencies installed${NC}"
+
+# Build frontend
+echo -e "${YELLOW}Building frontend assets...${NC}"
+
+# Set Node.js legacy provider for v17+
+export NODE_OPTIONS=--openssl-legacy-provider
+
+echo "  Building production assets..."
+if ! yarn build:production; then
+    echo -e "${RED}Error: Build failed. Trying with sudo...${NC}"
+    sudo -u www-data NODE_OPTIONS=--openssl-legacy-provider yarn build:production
+fi
+
+echo -e "${GREEN}✓ Frontend assets built${NC}"
+
+# Final message
+echo ""
+echo -e "${GREEN}=== Installation Complete! ===${NC}"
+echo ""
+echo -e "${BLUE}Next steps:${NC}"
+echo "1. Add your Gemini API key to .env:"
+echo "   GEMINI_API_KEY=your_api_key_here"
+echo ""
+echo "2. Visit your admin panel at /admin/ai to configure settings"
+echo ""
+echo "3. Access the AI chat at /server/{id}/ai"
+echo ""
+echo -e "${YELLOW}Backup created at: $BACKUP_DIR${NC}"
+echo ""
+echo -e "${GREEN}🎉 Pterodactyl AI Chat Integration is now installed!${NC}"hp"
     "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
     "$PTERODACTYL_PATH/app/Http/Requests/Api/Client/Servers/AiChatRequest.php"
     "$PTERODACTYL_PATH/app/Services/Servers/AiChatService.php"

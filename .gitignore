@@ -1,0 +1,6 @@
+pterodactyl-source/
+node_modules/
+.env
+*.log
+.DS_Store
+Thumbs.db

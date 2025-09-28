@@ -120,67 +120,28 @@ done
 
 echo -e "${GREEN}✓ Frontend files installed${NC}"
 
-# Function to safely modify files
-safe_modify() {
-    local file="$1"
-    local pattern="$2"
-    local replacement="$3"
-    local description="$4"
-    
-    if [ ! -f "$file" ]; then
-        echo -e "${YELLOW}⚠ File $file not found, skipping $description${NC}"
-        return 0
-    fi
-    
-    # Check if modification already exists
-    if grep -q "$pattern" "$file"; then
-        echo -e "${YELLOW}⚠ $description already exists${NC}"
-        return 0
-    fi
-    
-    # Create temporary file for testing
-    local temp_file=$(mktemp)
-    cp "$file" "$temp_file"
-    
-    # Apply modification to temp file
-    if echo "$replacement" | sudo tee -a "$temp_file" > /dev/null; then
-        # If successful, apply to real file
-        sudo cp "$temp_file" "$file"
-        rm "$temp_file"
-        echo "  ✓ $description"
-        return 0
-    else
-        rm "$temp_file"
-        echo -e "${RED}Error: Failed to apply $description${NC}"
-        return 1
-    fi
-}
-
 # Update configuration files
 echo -e "${YELLOW}Updating configuration files...${NC}"
 
-# Update services.php
+# Update services.php - add Gemini config before the closing ];
 if [ -f "$PTERODACTYL_PATH/config/services.php" ]; then
     if ! grep -q "gemini" "$PTERODACTYL_PATH/config/services.php"; then
-        # Use a more reliable method to add to services.php
-        sudo sed -i "/^];$/i\\    'gemini' => [\\n        'api_key' => env('GEMINI_API_KEY'),\\n    ]," "$PTERODACTYL_PATH/config/services.php"
+        # Insert before the closing ]; - more reliable method
+        sudo sed -i '/^];$/i\    '\''gemini'\'' => [\n        '\''api_key'\'' => env('\''GEMINI_API_KEY'\''),\n    ],' "$PTERODACTYL_PATH/config/services.php"
         echo "  ✓ Updated config/services.php"
     else
         echo -e "${YELLOW}⚠ Gemini config already exists in services.php${NC}"
     fi
 fi
 
-# Update API routes
+# Update API routes - add AI routes to the servers group
 if [ -f "$PTERODACTYL_PATH/routes/api-client.php" ]; then
     if ! grep -q "AiChatController" "$PTERODACTYL_PATH/routes/api-client.php"; then
-        # Add import
+        # Add import after the existing Client import
         sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Api\\Client;/a use Pterodactyl\\Http\\Controllers\\Api\\Client\\Servers\\AiChatController;' "$PTERODACTYL_PATH/routes/api-client.php"
         
-        # Add routes within the servers group - find the right location
-        sudo sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\
-        Route::post('\''/chat'\'', [AiChatController::class, '\''chat'\'']);\
-        Route::get('\''/history'\'', [AiChatController::class, '\''history'\'']);\
-    });' "$PTERODACTYL_PATH/routes/api-client.php"
+        # Add AI routes before the settings group - this is the correct location based on actual structure
+        sudo sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\n        Route::post('\''/chat'\'', [AiChatController::class, '\''chat'\'']);\n        Route::get('\''/history'\'', [AiChatController::class, '\''history'\'']);\n    });\n' "$PTERODACTYL_PATH/routes/api-client.php"
         echo "  ✓ Updated API routes"
     else
         echo -e "${YELLOW}⚠ AI routes already exist${NC}"
@@ -190,10 +151,10 @@ fi
 # Update admin routes
 if [ -f "$PTERODACTYL_PATH/routes/admin.php" ]; then
     if ! grep -q "AiSettingsController" "$PTERODACTYL_PATH/routes/admin.php"; then
-        # Add import
+        # Add import after existing Admin import
         sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Admin;/a use Pterodactyl\\Http\\Controllers\\Admin\\AiSettingsController;' "$PTERODACTYL_PATH/routes/admin.php"
         
-        # Add routes at the end
+        # Add routes at the end - following Pterodactyl's comment style
         {
             echo ""
             echo "/*"
@@ -215,15 +176,11 @@ if [ -f "$PTERODACTYL_PATH/routes/admin.php" ]; then
     fi
 fi
 
-# Update admin layout
+# Update admin layout - add AI menu item in BASIC ADMINISTRATION section
 if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ]; then
     if ! grep -q "AI Settings" "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"; then
-        # Find the settings menu item and add AI Settings after it
-        sudo sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\
-                            <a href="{{ route('\''admin.ai.index'\'')}}\">\
-                                <i class="fa fa-robot"></i> <span>AI Settings</span>\
-                            </a>\
-                        </li>' "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"
+        # Add AI Settings menu item after Settings in BASIC ADMINISTRATION section
+        sudo sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\n                            <a href="{{ route('\''admin.ai.index'\'')}}\">\n                                <i class="fa fa-robot"></i> <span>AI Settings</span>\n                            </a>\n                        </li>' "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"
         echo "  ✓ Updated admin navigation"
     else
         echo -e "${YELLOW}⚠ AI Settings menu already exists${NC}"
@@ -233,12 +190,12 @@ fi
 # Update frontend routes (if routes.ts exists)
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
     if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
-        # Add import
+        # Add import after existing lazy imports
         sudo sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
         
         # Add route to server routes array
-        sudo sed -i '/server:.*\[/,/    \],/{
-            /    \],/{
+        sudo sed -i '/server:.*\\[/,/    \\],/{
+            /    \\],/{
                 i\        {\
                 i\            path: '\''/ai'\'',\
                 i\            permission: null,\
@@ -265,7 +222,6 @@ echo -e "${GREEN}✓ Configuration files updated${NC}"
 # Set permissions
 echo -e "${YELLOW}Setting permissions...${NC}"
 
-# Set ownership for all installed files
 ALL_FILES=(
     "$PTERODACTYL_PATH/app/Http/Controllers/Admin/AiSettingsController.php"
     "$PTERODACTYL_PATH/app/Http/Controllers/Api/Client/Servers/AiChatController.php"
@@ -289,7 +245,6 @@ echo -e "${GREEN}✓ Permissions set${NC}"
 echo -e "${YELLOW}Clearing Laravel caches...${NC}"
 cd "$PTERODACTYL_PATH"
 
-# Clear caches with error handling
 if sudo -u www-data php artisan config:clear; then
     echo "  ✓ Config cache cleared"
 else

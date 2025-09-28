@@ -280,13 +280,14 @@ echo -e "${GREEN}✓ Laravel cache cleared${NC}"
 echo -e "${YELLOW}Installing JavaScript dependencies...${NC}"
 cd "$PTERODACTYL_PATH"
 
-# Remove problematic .yarnrc if it exists
-if [ -f ".yarnrc" ]; then
-    rm -f ".yarnrc"
-    echo "  ✓ Removed problematic .yarnrc"
-fi
+# Remove all .yarnrc files that cause permission issues
+find /var/www -name ".yarnrc" -delete 2>/dev/null || true
+find /root -name ".yarnrc" -delete 2>/dev/null || true
 
-# Set proper ownership for yarn cache and config
+# Set proper ownership for entire pterodactyl directory
+chown -R www-data:www-data "$PTERODACTYL_PATH"
+
+# Set proper ownership for yarn directories
 if [ -d "/var/www/.yarn" ]; then
     chown -R www-data:www-data "/var/www/.yarn"
 fi
@@ -294,11 +295,11 @@ if [ -d "/var/www/.cache" ]; then
     chown -R www-data:www-data "/var/www/.cache"
 fi
 
-# Install dependencies
-echo "  Running yarn install..."
-if ! yarn install; then
-    echo -e "${RED}Error: Yarn install failed. Trying with sudo...${NC}"
-    sudo -u www-data yarn install
+# Install dependencies as www-data user
+echo "  Running yarn install as www-data..."
+if ! sudo -u www-data yarn install --production --frozen-lockfile; then
+    echo -e "${RED}Error: Yarn install failed${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Dependencies installed${NC}"
@@ -306,13 +307,10 @@ echo -e "${GREEN}✓ Dependencies installed${NC}"
 # Build frontend
 echo -e "${YELLOW}Building frontend assets...${NC}"
 
-# Set Node.js legacy provider for v17+
-export NODE_OPTIONS=--openssl-legacy-provider
-
-echo "  Building production assets..."
-if ! yarn build:production; then
-    echo -e "${RED}Error: Build failed. Trying with sudo...${NC}"
-    sudo -u www-data NODE_OPTIONS=--openssl-legacy-provider yarn build:production
+echo "  Building production assets as www-data..."
+if ! sudo -u www-data NODE_OPTIONS=--openssl-legacy-provider yarn build:production; then
+    echo -e "${RED}Error: Build failed${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Frontend assets built${NC}"

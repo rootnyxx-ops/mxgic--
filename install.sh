@@ -18,11 +18,7 @@ PTERODACTYL_PATH="/var/www/pterodactyl"
 echo -e "${BLUE}=== Pterodactyl AI Chat Integration Installer ===${NC}"
 echo ""
 
-# Check if running as root
-if [[ $EUID -eq 0 ]]; then
-   echo -e "${RED}This script should not be run as root${NC}"
-   exit 1
-fi
+# Note: Running as root for system file modifications
 
 # Check if we're in the right directory
 if [ ! -f "app/Services/Servers/AiChatService.php" ]; then
@@ -77,8 +73,8 @@ safe_copy() {
         return 1
     fi
     
-    sudo mkdir -p "$(dirname "$dest")"
-    if sudo cp "$src" "$dest"; then
+    mkdir -p "$(dirname "$dest")"
+    if cp "$src" "$dest"; then
         echo "  ✓ Copied $(basename "$src")"
         return 0
     else
@@ -126,8 +122,7 @@ echo -e "${YELLOW}Updating configuration files...${NC}"
 # Update services.php - add Gemini config before the closing ];
 if [ -f "$PTERODACTYL_PATH/config/services.php" ]; then
     if ! grep -q "gemini" "$PTERODACTYL_PATH/config/services.php"; then
-        # Insert before the closing ]; - more reliable method
-        sudo sed -i '/^];$/i\    '\''gemini'\'' => [\n        '\''api_key'\'' => env('\''GEMINI_API_KEY'\''),\n    ],' "$PTERODACTYL_PATH/config/services.php"
+        sed -i '/^];$/i\    '\''gemini'\'' => [\n        '\''api_key'\'' => env('\''GEMINI_API_KEY'\''),\n    ],' "$PTERODACTYL_PATH/config/services.php"
         echo "  ✓ Updated config/services.php"
     else
         echo -e "${YELLOW}⚠ Gemini config already exists in services.php${NC}"
@@ -138,10 +133,10 @@ fi
 if [ -f "$PTERODACTYL_PATH/routes/api-client.php" ]; then
     if ! grep -q "AiChatController" "$PTERODACTYL_PATH/routes/api-client.php"; then
         # Add import after the existing Client import
-        sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Api\\Client;/a use Pterodactyl\\Http\\Controllers\\Api\\Client\\Servers\\AiChatController;' "$PTERODACTYL_PATH/routes/api-client.php"
+        sed -i '/use Pterodactyl\\Http\\Controllers\\Api\\Client;/a use Pterodactyl\\Http\\Controllers\\Api\\Client\\Servers\\AiChatController;' "$PTERODACTYL_PATH/routes/api-client.php"
         
-        # Add AI routes before the settings group - this is the correct location based on actual structure
-        sudo sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\n        Route::post('\''/chat'\'', [AiChatController::class, '\''chat'\'']);\n        Route::get('\''/history'\'', [AiChatController::class, '\''history'\'']);\n    });\n' "$PTERODACTYL_PATH/routes/api-client.php"
+        # Add AI routes before the settings group
+        sed -i '/Route::group.*prefix.*settings/i\    Route::group(['\''prefix'\'' => '\''ai'\''], function () {\n        Route::post('\''/chat'\'', [AiChatController::class, '\''chat'\'']);\n        Route::get('\''/history'\'', [AiChatController::class, '\''history'\'']);\n    });\n' "$PTERODACTYL_PATH/routes/api-client.php"
         echo "  ✓ Updated API routes"
     else
         echo -e "${YELLOW}⚠ AI routes already exist${NC}"
@@ -152,9 +147,9 @@ fi
 if [ -f "$PTERODACTYL_PATH/routes/admin.php" ]; then
     if ! grep -q "AiSettingsController" "$PTERODACTYL_PATH/routes/admin.php"; then
         # Add import after existing Admin import
-        sudo sed -i '/use Pterodactyl\\Http\\Controllers\\Admin;/a use Pterodactyl\\Http\\Controllers\\Admin\\AiSettingsController;' "$PTERODACTYL_PATH/routes/admin.php"
+        sed -i '/use Pterodactyl\\Http\\Controllers\\Admin;/a use Pterodactyl\\Http\\Controllers\\Admin\\AiSettingsController;' "$PTERODACTYL_PATH/routes/admin.php"
         
-        # Add routes at the end - following Pterodactyl's comment style
+        # Add routes at the end
         {
             echo ""
             echo "/*"
@@ -169,18 +164,17 @@ if [ -f "$PTERODACTYL_PATH/routes/admin.php" ]; then
             echo "    Route::get('/', [AiSettingsController::class, 'index'])->name('admin.ai.index');"
             echo "    Route::post('/', [AiSettingsController::class, 'update'])->name('admin.ai.update');"
             echo "});"
-        } | sudo tee -a "$PTERODACTYL_PATH/routes/admin.php" > /dev/null
+        } >> "$PTERODACTYL_PATH/routes/admin.php"
         echo "  ✓ Updated admin routes"
     else
         echo -e "${YELLOW}⚠ Admin AI routes already exist${NC}"
     fi
 fi
 
-# Update admin layout - add AI menu item in BASIC ADMINISTRATION section
+# Update admin layout - add AI menu item
 if [ -f "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php" ]; then
     if ! grep -q "AI Settings" "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"; then
-        # Add AI Settings menu item after Settings in BASIC ADMINISTRATION section
-        sudo sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\n                            <a href="{{ route('\''admin.ai.index'\'')}}\">\n                                <i class="fa fa-robot"></i> <span>AI Settings</span>\n                            </a>\n                        </li>' "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"
+        sed -i '/admin\.settings.*Settings/a\                        <li class="{{ ! starts_with(Route::currentRouteName(), '\''admin.ai'\'') ?: '\''active'\'' }}">\n                            <a href="{{ route('\''admin.ai.index'\'')}}\">\n                                <i class="fa fa-robot"></i> <span>AI Settings</span>\n                            </a>\n                        </li>' "$PTERODACTYL_PATH/resources/views/layouts/admin.blade.php"
         echo "  ✓ Updated admin navigation"
     else
         echo -e "${YELLOW}⚠ AI Settings menu already exists${NC}"
@@ -191,10 +185,10 @@ fi
 if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
     if ! grep -q "AiChatContainer" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
         # Add import after existing lazy imports
-        sudo sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        sed -i '/const.*lazy.*import/a const AiChatContainer = lazy(() => import('\''@/components/server/ai/AiChatContainer'\''));' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
         
         # Add route to server routes array
-        sudo sed -i '/server:.*\\[/,/    \\],/{
+        sed -i '/server:.*\\[/,/    \\],/{
             /    \\],/{
                 i\        {\
                 i\            path: '\''/ai'\'',\
@@ -210,7 +204,6 @@ if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
         echo -e "${YELLOW}⚠ Frontend AI routes already exist${NC}"
     fi
 else
-    # Copy our routes file if it doesn't exist
     if [ -f "resources/scripts/routers/routes.ts" ]; then
         safe_copy "resources/scripts/routers/routes.ts" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
         echo "  ✓ Created frontend routes"
@@ -235,7 +228,7 @@ ALL_FILES=(
 
 for file in "${ALL_FILES[@]}"; do
     if [ -e "$file" ]; then
-        sudo chown -R www-data:www-data "$file"
+        chown -R www-data:www-data "$file"
     fi
 done
 
@@ -268,7 +261,6 @@ echo -e "${GREEN}✓ Caches cleared${NC}"
 # Build frontend
 echo -e "${YELLOW}Building frontend (this may take a few minutes)...${NC}"
 
-# Check for package manager and build
 if command -v yarn &> /dev/null; then
     echo "  Using Yarn..."
     if sudo -u www-data yarn install --production --frozen-lockfile; then
@@ -327,4 +319,4 @@ echo "✓ Chat history"
 echo "✓ Permission-based access"
 echo ""
 echo -e "${YELLOW}If you encounter any issues, restore from backup:${NC}"
-echo "sudo cp -r $BACKUP_DIR/* $PTERODACTYL_PATH/"
+echo "cp -r $BACKUP_DIR/* $PTERODACTYL_PATH/"

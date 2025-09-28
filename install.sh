@@ -136,14 +136,7 @@ if [ -f "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts" ]; then
     # Add AI route if not exists
     if ! grep -q "path: '/ai'" "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"; then
         # Find a good place to insert the AI route (after files, before schedules)
-        sed -i '/path.*files.*edit/,/},/{/},/a\        {
-            path: '\'''/ai'\''',
-            permission: null,
-            name: '\''AI Assistant'\''',
-            component: AiChatContainer,
-            exact: true,
-        },
-}' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
+        sed -i '/path.*files.*edit/,/},/{/},/a\        {\n            path: '\'''/ai'\''',\n            permission: null,\n            name: '\''AI Assistant'\''',\n            component: AiChatContainer,\n            exact: true,\n        },' "$PTERODACTYL_PATH/resources/scripts/routers/routes.ts"
         echo "  ✓ Added AI route"
     fi
 else

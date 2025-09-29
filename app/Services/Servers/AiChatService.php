@@ -7,23 +7,14 @@ use Illuminate\Support\Facades\Cache;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\User;
 use Pterodactyl\Repositories\Wings\DaemonFileRepository;
-use Pterodactyl\Repositories\Wings\DaemonConsoleRepository;
-use Pterodactyl\Contracts\Repository\SettingsRepositoryInterface;
 
 class AiChatService
 {
     private DaemonFileRepository $fileRepository;
-    private DaemonConsoleRepository $consoleRepository;
-    private SettingsRepositoryInterface $settings;
 
-    public function __construct(
-        DaemonFileRepository $fileRepository,
-        DaemonConsoleRepository $consoleRepository,
-        SettingsRepositoryInterface $settings
-    ) {
+    public function __construct(DaemonFileRepository $fileRepository)
+    {
         $this->fileRepository = $fileRepository;
-        $this->consoleRepository = $consoleRepository;
-        $this->settings = $settings;
     }
 
     public function processChat(Server $server, array $data): string
@@ -61,10 +52,10 @@ class AiChatService
 
     private function callGeminiApi(string $prompt): string
     {
-        $apiKey = config('services.gemini.api_key');
+        $apiKey = env('GEMINI_API_KEY');
         
         if (!$apiKey) {
-            throw new \Exception('Gemini API key not configured');
+            throw new \Exception('Gemini API key not configured. Add GEMINI_API_KEY to .env file.');
         }
 
         $response = Http::timeout(30)->post("https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={$apiKey}", [

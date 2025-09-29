@@ -52,7 +52,7 @@ class AiChatService
 
     private function callGeminiApi(string $prompt): string
     {
-        $apiKey = env('GEMINI_API_KEY');
+        $apiKey = config('services.gemini.api_key');
         
         if (!$apiKey) {
             throw new \Exception('Gemini API key not configured. Add GEMINI_API_KEY to .env file.');

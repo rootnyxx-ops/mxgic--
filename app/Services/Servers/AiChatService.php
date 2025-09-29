@@ -85,36 +85,60 @@ class AiChatService
         $apiKey = $this->settings->get('ai::gemini_api_key') ?: config('services.gemini.api_key');
         
         if (!$apiKey) {
-            throw new \Exception('Gemini API key not configured');
+            throw new \Exception('Gemini API key not configured. Please add GEMINI_API_KEY to your .env file.');
         }
 
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={$apiKey}", [
-            'contents' => [
-                [
-                    'parts' => [
-                        ['text' => $prompt]
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={$apiKey}", [
+                'contents' => [
+                    [
+                        'parts' => [
+                            ['text' => $prompt]
+                        ]
                     ]
+                ],
+                'generationConfig' => [
+                    'temperature' => (float) $this->settings->get('ai::temperature', 0.7),
+                    'maxOutputTokens' => (int) $this->settings->get('ai::max_tokens', 1000),
                 ]
-            ],
-            'generationConfig' => [
-                'temperature' => (float) $this->settings->get('ai::temperature', 0.7),
-                'maxOutputTokens' => (int) $this->settings->get('ai::max_tokens', 1000),
-            ]
-        ]);
+            ]);
 
-        if (!$response->successful()) {
-            throw new \Exception('Gemini API request failed: ' . $response->body());
+            if (!$response->successful()) {
+                $errorBody = $response->body();
+                $statusCode = $response->status();
+                
+                // Log the full error for debugging
+                \Log::error('Gemini API Error', [
+                    'status' => $statusCode,
+                    'body' => $errorBody,
+                    'api_key_present' => !empty($apiKey),
+                    'api_key_length' => strlen($apiKey)
+                ]);
+                
+                throw new \Exception("Gemini API request failed (HTTP {$statusCode}): {$errorBody}");
+            }
+
+            $data = $response->json();
+            
+            // Log response structure for debugging
+            \Log::info('Gemini API Response Structure', ['data' => $data]);
+            
+            if (!isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                \Log::error('Invalid Gemini API Response Structure', ['response' => $data]);
+                throw new \Exception('Invalid response from Gemini API: ' . json_encode($data));
+            }
+
+            return $data['candidates'][0]['content']['parts'][0]['text'];
+            
+        } catch (\Exception $e) {
+            \Log::error('Gemini API Exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
         }
-
-        $data = $response->json();
-        
-        if (!isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-            throw new \Exception('Invalid response from Gemini API');
-        }
-
-        return $data['candidates'][0]['content']['parts'][0]['text'];
     }
 
     public function getChatHistory(Server $server, User $user): array
